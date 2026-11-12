@@ -18,13 +18,46 @@ jobs:
           mkdir -p src/main/java/ru/ruslan/donatorpunish src/main/resources
 
           cat > pom.xml << 'POM_EOF'
-          <project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>ru.ruslan</groupId><artifactId>DonatorPunish</artifactId><version>1.0.2</version><properties><maven.compiler.source>17</maven.compiler.source><maven.compiler.target>17</maven.compiler.target></properties><repositories><repository><id>repo-lanink-cn</id><url>https://repo.lanink.cn/repository/maven-public/</url></repository></repositories><dependencies><dependency><groupId>cn.nukkit</groupId><artifactId>Nukkit</artifactId><version>MOT-SNAPSHOT</version><scope>provided</scope></dependency></dependencies></project>
+          <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>ru.ruslan</groupId>
+            <artifactId>DonatorPunish</artifactId>
+            <version>1.0.3</version>
+            <properties>
+              <maven.compiler.source>17</maven.compiler.source>
+              <maven.compiler.target>17</maven.compiler.target>
+            </properties>
+            <repositories>
+              <repository>
+                <id>repo-lanink-cn</id>
+                <url>https://repo.lanink.cn/repository/maven-public/</url>
+              </repository>
+              <repository>
+                <id>luckperms-repo</id>
+                <url>https://repo.luckperms.net/</url>
+              </repository>
+            </repositories>
+            <dependencies>
+              <dependency>
+                <groupId>cn.nukkit</groupId>
+                <artifactId>Nukkit</artifactId>
+                <version>MOT-SNAPSHOT</version>
+                <scope>provided</scope>
+              </dependency>
+              <dependency>
+                <groupId>net.luckperms</groupId>
+                <artifactId>api</artifactId>
+                <version>5.4</version>
+                <scope>provided</scope>
+              </dependency>
+            </dependencies>
+          </project>
           POM_EOF
 
           cat > src/main/resources/plugin.yml << 'YML_EOF'
           name: DonatorPunish
           main: ru.ruslan.donatorpunish.Main
-          version: 1.0.2
+          version: 1.0.3
           api: ["1.0.0"]
           softdepend: [LuckPerms]
           commands:
@@ -85,7 +118,7 @@ jobs:
                       getLogger().error("LuckPerms не найден!");
                   }
                   getServer().getPluginManager().registerEvents(this, this);
-                  getLogger().info("DonatorPunish v1.0.2 включен!");
+                  getLogger().info("DonatorPunish v1.0.3 включен!");
               }
 
               private boolean checkCooldown(Player p, String cmd, long seconds) {
@@ -255,4 +288,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: DonatorPunish
-          path: target/DonatorPunish-1.0.2.jar
+          path: target/DonatorPunish-1.0.3.jar
