@@ -1,0 +1,258 @@
+name: Build DonatorPunish
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Create project files
+        run: |
+          mkdir -p src/main/java/ru/ruslan/donatorpunish src/main/resources
+
+          cat > pom.xml << 'POM_EOF'
+          <project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>ru.ruslan</groupId><artifactId>DonatorPunish</artifactId><version>1.0.2</version><properties><maven.compiler.source>17</maven.compiler.source><maven.compiler.target>17</maven.compiler.target></properties><repositories><repository><id>repo-lanink-cn</id><url>https://repo.lanink.cn/repository/maven-public/</url></repository></repositories><dependencies><dependency><groupId>cn.nukkit</groupId><artifactId>Nukkit</artifactId><version>MOT-SNAPSHOT</version><scope>provided</scope></dependency></dependencies></project>
+          POM_EOF
+
+          cat > src/main/resources/plugin.yml << 'YML_EOF'
+          name: DonatorPunish
+          main: ru.ruslan.donatorpunish.Main
+          version: 1.0.2
+          api: ["1.0.0"]
+          softdepend: [LuckPerms]
+          commands:
+            dban:
+              permission: dmod.helper
+            dkick:
+              permission: dmod.king
+            dmute:
+              permission: dmod.sponsor
+            dunmute:
+              permission: dmod.sponsor
+            dunban:
+              permission: dmod.helper
+            dfly:
+              permission: dmod.sponsor
+            dpremium:
+              permission: dmod.elite
+            dprem+:
+              permission: dmod.helper
+          permissions:
+            dmod.helper: { default: op }
+            dmod.king: { default: op }
+            dmod.sponsor: { default: op }
+            dmod.elite: { default: op }
+          YML_EOF
+
+          cat > src/main/java/ru/ruslan/donatorpunish/Main.java << 'JAVA_EOF'
+          package ru.ruslan.donatorpunish;
+
+          import cn.nukkit.Player;
+          import cn.nukkit.command.Command;
+          import cn.nukkit.command.CommandSender;
+          import cn.nukkit.event.EventHandler;
+          import cn.nukkit.event.EventPriority;
+          import cn.nukkit.event.Listener;
+          import cn.nukkit.event.player.PlayerChatEvent;
+          import cn.nukkit.event.player.PlayerJoinEvent;
+          import cn.nukkit.plugin.PluginBase;
+          import cn.nukkit.utils.TextFormat;
+          import net.luckperms.api.LuckPerms;
+          import net.luckperms.api.LuckPermsProvider;
+
+          import java.util.HashMap;
+          import java.util.Map;
+
+          public class Main extends PluginBase implements Listener {
+
+              private LuckPerms luckPerms;
+              private final Map<String, Long> cooldowns = new HashMap<>();
+              private final Map<String, BanData> bans = new HashMap<>();
+              private final Map<String, BanData> mutes = new HashMap<>();
+
+              @Override
+              public void onEnable() {
+                  try {
+                      this.luckPerms = LuckPermsProvider.get();
+                  } catch (Exception e) {
+                      getLogger().error("LuckPerms не найден!");
+                  }
+                  getServer().getPluginManager().registerEvents(this, this);
+                  getLogger().info("DonatorPunish v1.0.2 включен!");
+              }
+
+              private boolean checkCooldown(Player p, String cmd, long seconds) {
+                  String key = p.getName().toLowerCase() + ":" + cmd;
+                  long now = System.currentTimeMillis();
+                  if (cooldowns.containsKey(key) && cooldowns.get(key) > now) {
+                      long left = (cooldowns.get(key) - now) / 1000;
+                      p.sendMessage(TextFormat.RED + "Кулдаун! Подожди " + left + " сек.");
+                      return false;
+                  }
+                  cooldowns.put(key, now + (seconds * 1000));
+                  return true;
+              }
+
+              private boolean isDefault(Player target) {
+                  if (luckPerms == null) return true;
+                  String group = luckPerms.getPlayerAdapter(Player.class).getUser(target).getPrimaryGroup();
+                  return group.equalsIgnoreCase("default");
+              }
+
+              @Override
+              public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+                  if (!(sender instanceof Player)) return true;
+                  Player p = (Player) sender;
+                  String cmd = command.getName().toLowerCase();
+
+                  switch (cmd) {
+                      case "dban":
+                          if (args.length < 3) { p.sendMessage("§cИспользование: /dban <Ник> <Минуты> <Причина>"); return true; }
+                          if (!checkCooldown(p, "dban", 7200)) return true;
+                          int min = Integer.parseInt(args[1]);
+                          if (min > 20160) { p.sendMessage("§cМаксимум 14 дней (20160 минут)!"); return true; }
+                          String reasonBan = String.join(" ", java.util.Arrays.copyOfRange(args, 2, args.length));
+                          Player targetBan = getServer().getPlayer(args[0]);
+                          bans.put(args[0].toLowerCase(), new BanData(p.getName(), System.currentTimeMillis() + (min * 60000L), reasonBan));
+                          if (targetBan != null) targetBan.kick("§4Вы забанены донатером " + p.getName() + "\n§cПричина: " + reasonBan, false);
+                          p.sendMessage("§aИгрок " + args[0] + " забанен на " + min + " мин.");
+                          return true;
+
+                      case "dkick":
+                          if (args.length < 2) { p.sendMessage("§cИспользование: /dkick <Ник> <Причина>"); return true; }
+                          if (!checkCooldown(p, "dkick", 1200)) return true;
+                          Player targetKick = getServer().getPlayer(args[0]);
+                          if (targetKick == null) { p.sendMessage("§cИгрок не в сети!"); return true; }
+                          targetKick.kick("§cКик от " + p.getName() + ": " + String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length)), false);
+                          p.sendMessage("§aИгрок кикнут.");
+                          return true;
+
+                      case "dmute":
+                          if (args.length < 3) { p.sendMessage("§cИспользование: /dmute <Ник> <Минуты> <Причина>"); return true; }
+                          if (!checkCooldown(p, "dmute", 1200)) return true;
+                          String reasonMute = String.join(" ", java.util.Arrays.copyOfRange(args, 2, args.length));
+                          mutes.put(args[0].toLowerCase(), new BanData(p.getName(), System.currentTimeMillis() + (Integer.parseInt(args[1]) * 60000L), reasonMute));
+                          p.sendMessage("§aИгрок " + args[0] + " замучен на " + args[1] + " мин.");
+                          return true;
+
+                      case "dunmute":
+                          if (args.length < 1) return true;
+                          BanData muteData = mutes.get(args[0].toLowerCase());
+                          if (muteData != null && muteData.issuer.equalsIgnoreCase(p.getName())) {
+                              mutes.remove(args[0].toLowerCase());
+                              p.sendMessage("§aВы сняли мут с " + args[0]);
+                          } else {
+                              p.sendMessage("§cВы не выдавали мут этому игроку или мут не найден.");
+                          }
+                          return true;
+
+                      case "dunban":
+                          if (args.length < 1) return true;
+                          BanData banData = bans.get(args[0].toLowerCase());
+                          if (banData != null && banData.issuer.equalsIgnoreCase(p.getName())) {
+                              bans.remove(args[0].toLowerCase());
+                              p.sendMessage("§aВы разбанили " + args[0]);
+                          } else {
+                              p.sendMessage("§cВы не выдавали бан этому игроку или бан не найден.");
+                          }
+                          return true;
+
+                      case "dfly":
+                          if (args.length < 1) return true;
+                          if (!checkCooldown(p, "dfly", 7200)) return true;
+                          Player targetFly = getServer().getPlayer(args[0]);
+                          if (targetFly == null || !isDefault(targetFly)) {
+                              p.sendMessage("§cЦель не найдена или у нее уже есть привилегия!");
+                              return true;
+                          }
+                          getServer().dispatchCommand(getServer().getConsoleSender(), "lp user " + targetFly.getName() + " permission settemp funtools.timefly true 60m");
+                          p.sendMessage("§aИгроку " + targetFly.getName() + " выдан флай на 60 минут.");
+                          return true;
+
+                      case "dpremium":
+                          if (args.length < 1) return true;
+                          if (!checkCooldown(p, "dpremium", 7200)) return true;
+                          Player targetPrem = getServer().getPlayer(args[0]);
+                          if (targetPrem == null || !isDefault(targetPrem)) {
+                              p.sendMessage("§cЦель не найдена или у нее уже есть привилегия!");
+                              return true;
+                          }
+                          getServer().dispatchCommand(getServer().getConsoleSender(), "lp user " + targetPrem.getName() + " parent addtemp premium 60m");
+                          p.sendMessage("§aИгроку " + targetPrem.getName() + " выдан Премиум на 60 минут.");
+                          return true;
+
+                      case "dprem+":
+                          if (args.length < 1) return true;
+                          if (!checkCooldown(p, "dprem+", 43200)) return true;
+                          Player targetPremPlus = getServer().getPlayer(args[0]);
+                          if (targetPremPlus == null || !isDefault(targetPremPlus)) {
+                              p.sendMessage("§cЦель не найдена или у нее уже есть привилегия!");
+                              return true;
+                          }
+                          getServer().dispatchCommand(getServer().getConsoleSender(), "lp user " + targetPremPlus.getName() + " parent addtemp premium 24h");
+                          p.sendMessage("§aИгроку " + targetPremPlus.getName() + " выдан Премиум на 24 часа.");
+                          return true;
+                  }
+                  return true;
+              }
+
+              @EventHandler
+              public void onJoin(PlayerJoinEvent e) {
+                  Player p = e.getPlayer();
+                  BanData ban = bans.get(p.getName().toLowerCase());
+                  if (ban != null) {
+                      if (ban.expiry > System.currentTimeMillis()) {
+                          p.kick("§4Вы забанены!\n§cПричина: " + ban.reason + "\n§cСрок до: " + new java.util.Date(ban.expiry), false);
+                      } else {
+                          bans.remove(p.getName().toLowerCase());
+                      }
+                  }
+              }
+
+              @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+              public void onChat(PlayerChatEvent e) {
+                  Player p = e.getPlayer();
+                  BanData mute = mutes.get(p.getName().toLowerCase());
+                  if (mute != null) {
+                      if (mute.expiry > System.currentTimeMillis()) {
+                          e.setCancelled(true);
+                          p.sendMessage("§cВы замучены! Причина: " + mute.reason);
+                      } else {
+                          mutes.remove(p.getName().toLowerCase());
+                      }
+                  }
+              }
+
+              static class BanData {
+                  String issuer;
+                  long expiry;
+                  String reason;
+                  public BanData(String issuer, long expiry, String reason) {
+                      this.issuer = issuer;
+                      this.expiry = expiry;
+                      this.reason = reason;
+                  }
+              }
+          }
+          JAVA_EOF
+
+      - name: Fix indentation
+        run: |
+          sed -i 's/^          //' src/main/java/ru/ruslan/donatorpunish/Main.java
+          sed -i 's/^          //' src/main/resources/plugin.yml
+          sed -i 's/^          //' pom.xml
+
+      - name: Build
+        run: mvn -B package
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DonatorPunish
+          path: target/DonatorPunish-1.0.2.jar
